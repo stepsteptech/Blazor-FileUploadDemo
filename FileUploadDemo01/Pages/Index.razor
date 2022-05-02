@@ -1,0 +1,223 @@
+﻿@page "/"
+@using Services
+@using Models
+@inject IWebHostEnvironment Environment
+@inject IUploadFileService FileService
+
+<PageTitle>Index</PageTitle>
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+
+            <div class="alert alert-info">
+                
+                <p>
+                In this demo, you will get acquainted with
+                the tricks of <b class="text-danger">uploading files in Blazor</b>, and
+                you will also learn how to work with Sqlite to save
+                the file address and read it and display it in the bootstrap table.
+                </p>
+
+                <ul>
+                    <li>Check File Size</li>
+                    <li>Check File Type</li>
+                    <li>Analize file before upload</li>
+                    <li>Change File Name</li>
+                    <li>Save file details in sqlite database</li>
+                    <li>Read Data From sqlite Database </li>
+                    <li>show details in bootstrap table</li>
+                    <li>work with efcore</li>
+                </ul>
+                <p>
+                You can use <a href="https://www.youtube.com/channel/UC17Tc2MsSm678SCL3jKEq_g"><b> this link </b></a> to watch the educational video in my channel on youtube.
+                Do not forget to subscribe to the channel. I am looking forward to your commets.
+                </p>
+                
+                <p>
+                 Specal thanks <a href="https://www.youtube.com/channel/UC17Tc2MsSm678SCL3jKEq_g"><b>TECHLAZOR</b></a>
+                </p>
+            </div>
+
+
+            <div class="card">
+                <div class="card-header">
+                    <span>Please Select File of this format and size :
+                    @foreach (var item in AcceptedFileTypes)
+                    {
+                        <span class="badge bg-success m-1">@item</span>
+                        
+                    }
+                    </span>
+                    <span class="badge bg-success">File Size : @AcceptedMaxFileSize Bytes</span>
+                </div>
+                <div class="card-body">
+
+                    <InputFile OnChange="@HandelFileChange" class="form-control" aria-label="Select File"></InputFile>
+                    <br />
+                    @if(SelectedFileNotification)
+                    {
+                        <div class="@AlertCssClass" role="alert">
+                            @foreach (var item in SelectedFileDetails)
+                            {
+                                <p>@item</p>
+                                
+                            }
+
+                        </div>
+                    }
+                    @if(ShowUploadBtn)
+                    {
+                        <button @onclick="@(async ()=>await HandelUpload())" class="btn btn-success">Upload SelectedFile</button>
+
+                    }
+
+                </div>
+            </div>
+           @* Table to Show Uploaded Files*@
+           <div class="card">
+               <div class="card-header">
+                   <h3>Uploaded Files Table</h3>
+
+               </div>
+               <div class="card-body">
+
+                   <table class="table table-bordered">
+                       <thead>
+                           <tr>
+                               <th>#</th>
+                               <th>File Name</th>
+                               <th>Sile Size</th>
+                               <th>File Format</th>
+                               <th>Image</th>
+                           </tr>
+                       </thead>
+                       <tbody>
+                           @foreach (var item in uplodedFileModels)
+                           {
+                               <tr>
+                                   <td>@item.Id</td>
+                                   <td>@item.FileName</td>
+                                   <td>@item.FileSize</td>
+                                   <td>@item.FileType</td>
+                                   <td>
+                                       <img src=@item.FileUrl class="img-thumbnail" width="100" height="100">
+
+                                   </td>
+                               </tr>
+                               
+                           }
+                       </tbody>
+                   </table>
+
+               </div>
+           </div>
+        </div>
+    </div>
+</div>
+@code
+{
+    bool SelectedFileNotification = false;
+    bool ShowUploadBtn = false;
+    int AcceptedMaxFileSize = 3000000;
+    List<string> AcceptedFileTypes = new List<string> { "image/jpg", "image/jpeg", "image/png" };
+    List<string> SelectedFileDetails = new List<string>();
+    string NewFileName = string.Empty;
+    string AlertCssClass = string.Empty;
+
+    IBrowserFile UploadedFile;
+    string PathToUpload = string.Empty;
+
+    //crate a list of model
+    List<UplodedFileModel> uplodedFileModels = new List<UplodedFileModel>();
+
+    private async Task HandelFileChange(InputFileChangeEventArgs e)
+    {
+        UploadedFile = e.File;
+        var selectedFileType = UploadedFile.ContentType;
+        SelectedFileNotification = false;
+        SelectedFileDetails = new List<string>();
+
+        //Check File Size And File Format
+        if(!AcceptedFileTypes.Any(t=>t.Equals(selectedFileType)))
+        {
+            //Set Message For File Type
+            AlertCssClass = "alert alert-danger";
+            SelectedFileDetails.Add("File Type is not Acceptable!");
+            SelectedFileNotification = true;
+            ShowUploadBtn = false;
+            return;
+        }
+        //check file size
+        var selectedFileSize = UploadedFile.Size;
+        if(selectedFileSize>AcceptedMaxFileSize)
+        {
+            AlertCssClass = "alert alert-danger";
+            SelectedFileDetails.Add($"the selected file size is larger than the allowed value {AcceptedMaxFileSize}");
+            SelectedFileNotification = true;
+            ShowUploadBtn = false;
+            return;
+        }
+        //If everything is ok ,change the file name to avoid overwrite
+        var FileExtension = Path.GetExtension(UploadedFile.Name);
+        NewFileName = Guid.NewGuid().ToString() + FileExtension;
+
+        //Place File In IBrowseFile
+
+        PathToUpload = Path.Combine(Environment.WebRootPath, "Uploads", NewFileName);
+
+        SelectedFileNotification = true;
+        ShowUploadBtn = true;
+        AlertCssClass = "alert alert-success";
+        SelectedFileDetails.Add("File Size : " + selectedFileSize.ToString());
+        SelectedFileDetails.Add("File Type :" + selectedFileType);
+        SelectedFileDetails.Add("New File Name : " + NewFileName);
+
+
+
+    }
+    private async Task HandelUpload()
+    {
+        //here we upload the selected file to server
+        await using FileStream fs = new(PathToUpload, FileMode.Create);
+        await UploadedFile.OpenReadStream(AcceptedMaxFileSize).CopyToAsync(fs);
+
+        //Lets Create A model and save file data in it
+        UplodedFileModel model = new UplodedFileModel()
+            {
+                FileName = NewFileName,
+                FileSize = UploadedFile.Size,
+                FileType = UploadedFile.ContentType,
+                FileUrl = "Uploads/" + NewFileName
+            };
+
+        await FileService.AddNewFileAsync(model);
+
+        //clear the notification Messages
+        SelectedFileDetails = new List<string>();
+        //add new message to show to user
+        SelectedFileDetails.Add("The File Uploaded Successfully");
+        SelectedFileNotification = true;
+        //hide upload btn 
+        ShowUploadBtn = false;
+        AlertCssClass = "alert alert-success";
+        //Pupulate Data After Insert
+        await LoadFilesToTable();
+
+
+    }
+    //lets Create a table to show uploaded file detail
+    //fill the model list from database using service
+    private async Task LoadFilesToTable()
+    {
+        uplodedFileModels = await FileService.GetAllFilesAsync();
+    }
+    //call LoadFiletotable method in page init
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFilesToTable();
+        
+    }
+
+
+}
